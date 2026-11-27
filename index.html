@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Person Analytics &amp; SQL Server (Fast Test Build)</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <style>
+    :root{
+      --bg:#eef1eb;--card:#fff;--ink:#15202b;--muted:#5a6675;--line:#d8ded4;
+      --accent:#1f48d8;--ok:#0f7a56;--warn:#b45309;--err:#c0262d;--target:#15803d;--untarget:#dc2626;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);padding:14px;display:flex;justify-content:center}
+    main{width:100%;max-width:900px}
+    .top-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+    h1{font-size:1.25rem;margin:0;font-weight:700}
+    h2{font-size:1.05rem;margin:0 0 10px;font-weight:700}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+    #status{padding:9px 12px;border-radius:10px;font-weight:600;background:#f3f5f0;color:var(--muted);display:flex;align-items:center;gap:10px;font-size:.9rem}
+    #status[data-type=busy]::before{content:"";width:13px;height:13px;border-radius:50%;flex:none;border:2px solid var(--accent);border-right-color:transparent;animation:spin .7s linear infinite}
+    #status[data-type=ok]{background:#e6f4ee;color:var(--ok)}
+    #status[data-type=warn]{background:#fef3c7;color:var(--warn)}
+    #status[data-type=error]{background:#fbe9ea;color:var(--err)}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .btn-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+    button{min-height:40px;padding:7px 12px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer;border:1.5px solid var(--accent);background:#fff;color:var(--accent)}
+    button.primary{background:var(--accent);color:#fff}
+    button.stop{background:var(--err);border-color:var(--err);color:#fff}
+    button.submit-btn{background:var(--ok);border-color:var(--ok);color:#fff}
+    button.small{min-height:32px;padding:4px 9px;font-size:.8rem}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    #stage{position:relative;border-radius:12px;overflow:hidden;background:#090d12;aspect-ratio:4/3;width:100%}
+    #video,#overlay{position:absolute;inset:0;width:100%;height:100%}
+    #overlay{cursor:pointer}
+    #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#cbd5e1;padding:18px;text-align:center;font-size:.92rem}
+    .grid-4{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+    @media(min-width:640px){.grid-4{grid-template-columns:repeat(4,1fr)}}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+    .stat{background:#f7f9f5;border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+    .stat-val{font-size:1.35rem;font-weight:700}
+    .stat-lbl{font-size:.76rem;color:var(--muted);font-weight:600}
+    .two-col{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    @media(min-width:640px){.two-col{grid-template-columns:1fr 1fr}}
+    .panel{background:#f8faf6;border:1px solid var(--line);border-radius:12px;padding:10px}
+    .panel h3{margin:0 0 8px;font-size:.9rem}
+    .id-list{display:flex;flex-wrap:wrap;gap:6px;min-height:26px}
+    .chip{padding:4px 10px;border-radius:999px;font-size:.8rem;font-weight:700;cursor:pointer;border:1px solid transparent}
+    .chip.targeted{background:#dcfce7;color:var(--target);border-color:#86efac}
+    .chip.untargeted{background:#fee2e2;color:var(--untarget);border-color:#fca5a5}
+    label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:4px}
+    input[type=text],input[type=password],input[type=number]{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:.88rem;background:#fff}
+    .perm-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85rem;font-weight:600;cursor:pointer}
+    .perm-row input{width:17px;height:17px;accent-color:var(--accent)}
+    .hint{font-size:.78rem;color:var(--muted);margin-top:6px}
+    .person-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#f8faf6}
+    .person-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+    .person-title{font-weight:700;font-size:.95rem}
+    .lock-tag{background:#e0e7ff;color:var(--accent);padding:2px 8px;border-radius:999px;font-size:.73rem;font-weight:700;margin-left:6px}
+    .badge-t{background:#dcfce7;color:var(--target);padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:700}
+    .badge-u{background:#fee2e2;color:var(--untarget);padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:700}
+    .boxes-grid{display:grid;grid-template-columns:1fr;gap:8px}
+    @media(min-width:600px){.boxes-grid{grid-template-columns:1fr 1fr}}
+    .info-box{position:relative;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 32px 9px 10px}
+    .cancel-x{position:absolute;top:6px;right:6px;min-height:24px;width:24px;padding:0;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color:var(--untarget);font-size:.85rem;line-height:1}
+    .calc-line{font-size:.8rem;margin-top:6px;font-weight:600;color:var(--ok)}
+    .events-wrap{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+    .event-card{border:1px solid var(--line);border-radius:12px;padding:10px;background:#f8faf6}
+    .event-head{font-weight:700;font-size:.88rem;margin-bottom:8px;color:var(--accent)}
+    .snap-pair{display:grid;grid-template-columns:1fr;gap:8px}
+    @media(min-width:600px){.snap-pair{grid-template-columns:1fr 1fr}}
+    .snap-box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px}
+    .snap-box img{width:100%;border-radius:8px;display:block;aspect-ratio:4/3;object-fit:cover;background:#111}
+    .snap-meta{font-size:.78rem;margin-top:6px;line-height:1.4}
+    .db-item{background:#f8faf6;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;font-size:.82rem}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="top-bar">
+      <h1>Person Analytics &amp; SQL Server</h1>
+      <span id="authBadge" class="hint" style="margin:0;font-weight:700">Admin Mode: Locked</span>
+    </div>
+
+    <section class="card">
+      <div id="status" data-type="ok">Ready — click Start Camera for fast detection.</div>
+
+      <div class="btn-row">
+        <button id="toggleCam" class="primary">Start Camera</button>
+        <button id="enrollBtn" disabled>Enroll &amp; Lock ID</button>
+        <button id="flipCam" disabled>Flip Camera</button>
+        <button id="submitBtn" class="submit-btn" disabled>Submit to SQL Server</button>
+        <button id="clearMarksBtn" type="button">All Targeted</button>
+      </div>
+
+      <div id="stage">
+        <video id="video" playsinline muted autoplay></video>
+        <canvas id="overlay" title="Click box to toggle Targeted / Untargeted"></canvas>
+        <div id="empty">Click "Start Camera" to begin fast monitoring.</div>
+      </div>
+
+      <div class="grid-4">
+        <div class="stat"><div id="curCount" class="stat-val">0</div><div class="stat-lbl">Current on Screen</div></div>
+        <div class="stat"><div id="totalPersonsCount" class="stat-val">0</div><div class="stat-lbl">Total Persons Seen</div></div>
+        <div class="stat"><div id="targetPct" class="stat-val">100%</div><div class="stat-lbl">Targeted (%)</div></div>
+        <div class="stat"><div id="untargetPct" class="stat-val">0%</div><div class="stat-lbl">Untargeted (%)</div></div>
+      </div>
+
+      <div class="grid-3">
+        <div class="stat"><div id="allTotalSalary" class="stat-val">0</div><div class="stat-lbl">Total Salary</div></div>
+        <div class="stat"><div id="allGivenSalary" class="stat-val">0</div><div class="stat-lbl">Given Salary</div></div>
+        <div class="stat"><div id="allRemSalary" class="stat-val">0</div><div class="stat-lbl">Remaining</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel"><h3>Targeted IDs</h3><div id="targetedList" class="id-list"></div></div>
+        <div class="panel"><h3>Untargeted IDs</h3><div id="untargetedList" class="id-list"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>ID &amp; Generation</h2>
+      <label for="idInput">Person ID (single ID like 13 replaces old IDs when 1 person is on screen)</label>
+      <div class="btn-row" style="margin:6px 0 0">
+        <input id="idInput" type="text" placeholder="e.g. 13">
+        <button id="applyIdsBtn" type="button">Set ID</button>
+      </div>
+      <label class="perm-row">
+        <input id="allowSysGen" type="checkbox">
+        <span>Allow auto IDs for multiple persons</span>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Individual Person Boxes</h2>
+      <div id="individualsContainer"><div class="hint">Person boxes appear here.</div></div>
+    </section>
+
+    <section class="card">
+      <h2>Monitor Exit Events</h2>
+      <div id="eventsContainer" class="events-wrap"><div class="hint">Exit snapshots appear here.</div></div>
+    </section>
+
+    <section class="card">
+      <h2>Admin &amp; SQL Server</h2>
+      <div id="loginBox">
+        <div class="two-col" style="margin-top:0">
+          <div><label for="adminUser">Username</label><input id="adminUser" type="text" placeholder="admin"></div>
+          <div><label for="adminPass">Password</label><input id="adminPass" type="password" placeholder="1234"></div>
+        </div>
+        <div class="btn-row"><button id="loginBtn" class="primary" type="button">Admin Login</button></div>
+      </div>
+      <div id="adminPanel" hidden>
+        <div class="btn-row" style="margin-top:0">
+          <button id="viewDbBtn" type="button">Refresh Records</button>
+          <button id="clearFacesBtn" type="button">Clear Faces</button>
+          <button id="logoutBtn" class="stop" type="button">Logout</button>
+        </div>
+        <div id="savedFacesInfo" class="hint">Saved faces: none</div>
+        <div id="dbRecordsList" style="margin-top:10px"></div>
+      </div>
+    </section>
+  </main>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script>
+    const CFG = {
+      API_BASE: 'http://localhost:3000/api',
+      MODEL_URL: 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model',
+      DETECT_MS: 160,
+      UI_MS: 650,
+      INPUT_SIZE: 224,
+      SCORE: 0.3,
+      BOX_MAX: 380,
+      MISS_LIMIT: 7
+    };
+
+    const $ = id => document.getElementById(id);
+    const video = $('video'), overlay = $('overlay');
+
+    let modelsLoaded = false, modelPromise = null, stream = null, running = false, busy = false, submitted = false;
+    let isAdmin = false, adminAuth = { user: '', pass: '' };
+    let facing = 'user', lastDetect = 0, lastUi = 0, lastSnap = null;
+
+    let lockedPersons = [], customIdQueue = [], seenOrderedIds = [];
+    let untargetedSet = new Set(), personBoxes = {}, goneRecords = [];
+    let sysGenCounter = 1, userLockedSingleId = null;
+
+    function setStatus(msg, type) {
+      $('status').textContent = msg;
+      $('status').dataset.type = type;
+    }
+
+    function defaultBoxes() {
+      return {
+        salaryBox: { active: true, total: 0, given: 0 },
+        classBox: { active: true, canDo: '', cannotDo: '' },
+        customBoxes: []
+      };
+    }
+
+    function ensurePerson(id) {
+      if (!id) return;
+      if (!seenOrderedIds.includes(id)) seenOrderedIds.push(id);
+      if (!personBoxes[id]) personBoxes[id] = defaultBoxes();
+    }
+
+    function setSingleId(newId) {
+      const clean = String(newId || '').trim();
+      if (!clean) return;
+      userLockedSingleId = clean;
+      customIdQueue = [];
+      const boxes = personBoxes[lockedPersons[0]?.id] || personBoxes[seenOrderedIds[0]] || defaultBoxes();
+      const isUnt = lockedPersons.some(p => untargetedSet.has(p.id));
+      seenOrderedIds = [clean];
+      personBoxes = { [clean]: boxes };
+      untargetedSet.clear();
+      if (isUnt) untargetedSet.add(clean);
+      if (lockedPersons.length) {
+        lockedPersons = [{ ...lockedPersons[0], id: clean, missed: 0 }];
+      }
+    }
+
+    function assignId(cx, cy, activeIds, totalInFrame) {
+      if (totalInFrame === 1) {
+        const id = userLockedSingleId || lockedPersons[0]?.id || seenOrderedIds[0] || 'Person-1';
+        ensurePerson(id);
+        return id;
+      }
+
+      let near = null, minDist = CFG.BOX_MAX;
+      for (const p of lockedPersons) {
+        if (activeIds.has(p.id)) continue;
+        const d = Math.hypot(cx - p.cx, cy - p.cy);
+        if (d < minDist) { minDist = d; near = p; }
+      }
+      if (near) { ensurePerson(near.id); return near.id; }
+
+      while (customIdQueue.length) {
+        const uid = customIdQueue.shift();
+        if (!activeIds.has(uid)) { ensurePerson(uid); return uid; }
+      }
+
+      const prefix = $('allowSysGen').checked ? 'ID-' : 'Person-';
+      while (true) {
+        const id = `${prefix}${sysGenCounter++}`;
+        if (!activeIds.has(id) && !seenOrderedIds.includes(id)) {
+          ensurePerson(id);
+          return id;
+        }
+      }
+    }
+
+    function updateFromBoxes(boxes) {
+      const sorted = [...boxes].sort((a, b) => a.x - b.x);
+      const total = sorted.length;
+      const activeIds = new Set();
+      const next = [];
+      const goneIds = [];
+
+      sorted.forEach(b => {
+        const bbox = [b.x, b.y, b.width, b.height];
+        const cx = b.x + b.width / 2;
+        const cy = b.y + b.height / 2;
+        const id = assignId(cx, cy, activeIds, total);
+        activeIds.add(id);
+        next.push({ id, bbox, cx, cy, missed: 0 });
+      });
+
+      lockedPersons.forEach(prev => {
+        if (!activeIds.has(prev.id)) {
+          if (prev.missed + 1 >= CFG.MISS_LIMIT) goneIds.push(prev.id);
+          else next.push({ ...prev, missed: prev.missed + 1 });
+        }
+      });
+
+      lockedPersons = next;
+      return goneIds;
+    }
+
+    function salarySummary() {
+      let total = 0, given = 0;
+      for (const id of seenOrderedIds) {
+        const sb = personBoxes[id]?.salaryBox;
+        if (sb && sb.active) {
+          total += Number(sb.total) || 0;
+          given += Number(sb.given) || 0;
+        }
+      }
+      return { allTotal: total, allGiven: given, allRem: total - given };
+    }
+
+    function drawOverlay() {
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      const fs = Math.max(13, Math.round(overlay.width / 42));
+      ctx.font = `700 ${fs}px system-ui,sans-serif`;
+
+      lockedPersons.forEach(p => {
+        const [x, y, w, h] = p.bbox;
+        const isUnt = untargetedSet.has(p.id);
+        const col = isUnt ? '#dc2626' : '#16a34a';
+        const tag = `${p.id} (${isUnt ? 'Untargeted' : 'Targeted'})`;
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = col;
+        ctx.strokeRect(x, y, w, h);
+        const pad = 4, tw = ctx.measureText(tag).width + pad * 2, th = fs + pad * 1.5;
+        const ty = y >= th ? y - th : y;
+        ctx.fillStyle = col;
+        ctx.fillRect(x, ty, tw, th);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(tag, x + pad, ty + fs);
+      });
+    }
+
+    function makeSnap(items) {
+      const c = document.createElement('canvas');
+      c.width = overlay.width || 320;
+      c.height = overlay.height || 240;
+      const ctx = c.getContext('2d');
+      if (video.readyState >= 2) ctx.drawImage(video, 0, 0, c.width, c.height);
+      return {
+        timestamp: new Date().toISOString(),
+        amountInMonitor: items.length,
+        idsOrdered: items.map(i => i.id),
+        imageDataUrl: c.toDataURL('image/jpeg', 0.5)
+      };
+    }
+
+    function renderGone() {
+      const box = $('eventsContainer');
+      if (!goneRecords.length) {
+        box.innerHTML = '<div class="hint">Exit snapshots appear here.</div>';
+        return;
+      }
+      box.innerHTML = goneRecords.map((r, i) => `
+        <div class="event-card">
+          <div class="event-head">#${i + 1} — ID [${r.goneIds.join(', ')}] left screen</div>
+          <div class="snap-pair">
+            <div class="snap-box"><strong>Before</strong><img src="${r.before.imageDataUrl}"><div class="snap-meta">Count: ${r.before.amountInMonitor}</div></div>
+            <div class="snap-box"><strong>After</strong><img src="${r.after.imageDataUrl}"><div class="snap-meta">Count: ${r.after.amountInMonitor}</div></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderStatsAndBoxes() {
+      const cur = lockedPersons.filter(p => p.missed === 0).length;
+      const seen = seenOrderedIds.length;
+      const untList = seenOrderedIds.filter(id => untargetedSet.has(id));
+      const tarList = seenOrderedIds.filter(id => !untargetedSet.has(id));
+      const tPct = seen ? ((tarList.length / seen) * 100).toFixed(1) : '100.0';
+      const uPct = seen ? ((untList.length / seen) * 100).toFixed(1) : '0.0';
+      const sal = salarySummary();
+
+      $('curCount').textContent = String(cur);
+      $('totalPersonsCount').textContent = String(seen);
+      $('targetPct').textContent = `${tPct}%`;
+      $('untargetPct').textContent = `${uPct}%`;
+      $('allTotalSalary').textContent = String(sal.allTotal);
+      $('allGivenSalary').textContent = String(sal.allGiven);
+      $('allRemSalary').textContent = String(sal.allRem);
+
+      $('targetedList').innerHTML = tarList.length
+        ? tarList.map(id => `<span class="chip targeted" onclick="toggleTarget('${id}')">${id}</span>`).join('')
+        : '<span class="hint">None</span>';
+      $('untargetedList').innerHTML = untList.length
+        ? untList.map(id => `<span class="chip untargeted" onclick="toggleTarget('${id}')">${id}</span>`).join('')
+        : '<span class="hint">None</span>';
+
+      $('individualsContainer').innerHTML = seenOrderedIds.length
+        ? seenOrderedIds.map(id => {
+            const pb = personBoxes[id];
+            const isUnt = untargetedSet.has(id);
+            const rem = (Number(pb.salaryBox.total) || 0) - (Number(pb.salaryBox.given) || 0);
+            return `
+              <div class="person-card">
+                <div class="person-head">
+                  <span class="person-title">${id} <span class="lock-tag">Locked</span> <span class="${isUnt ? 'badge-u' : 'badge-t'}">${isUnt ? 'Untargeted' : 'Targeted'}</span></span>
+                  <div class="btn-row" style="margin:0">
+                    <button type="button" class="small" onclick="toggleTarget('${id}')">Toggle</button>
+                    <button type="button" class="small" onclick="addCustom('${id}')">+ Box</button>
+                  </div>
+                </div>
+                <div class="boxes-grid">
+                  ${pb.salaryBox.active ? `
+                    <div class="info-box">
+                      <button type="button" class="cancel-x" onclick="cancelSal('${id}')">✕</button>
+                      <strong>Salary</strong>
+                      <label style="margin-top:6px">Total</label><input type="number" value="${pb.salaryBox.total}" onchange="setSal('${id}','total',this.value)">
+                      <label style="margin-top:6px">Given</label><input type="number" value="${pb.salaryBox.given}" onchange="setSal('${id}','given',this.value)">
+                      <div class="calc-line">Remaining: ${rem}</div>
+                    </div>` : ''}
+                  ${pb.classBox.active ? `
+                    <div class="info-box">
+                      <button type="button" class="cancel-x" onclick="cancelCls('${id}')">✕</button>
+                      <strong>Class Notes</strong>
+                      <label style="margin-top:6px">Can Do</label><input type="text" value="${pb.classBox.canDo}" onchange="setCls('${id}','canDo',this.value)">
+                      <label style="margin-top:6px">Cannot Do</label><input type="text" value="${pb.classBox.cannotDo}" onchange="setCls('${id}','cannotDo',this.value)">
+                    </div>` : ''}
+                  ${pb.customBoxes.map(cb => `
+                    <div class="info-box">
+                      <button type="button" class="cancel-x" onclick="delCustom('${id}','${cb.id}')">✕</button>
+                      <input type="text" value="${cb.title}" onchange="editCustom('${id}','${cb.id}','title',this.value)">
+                      <input type="text" style="margin-top:6px" value="${cb.value}" onchange="editCustom('${id}','${cb.id}','value',this.value)">
+                    </div>`).join('')}
+                </div>
+              </div>`;
+          }).join('')
+        : '<div class="hint">Person boxes appear here.</div>';
+    }
+
+    window.toggleTarget = id => {
+      if (untargetedSet.has(id)) untargetedSet.delete(id);
+      else untargetedSet.add(id);
+      renderStatsAndBoxes(); drawOverlay();
+    };
+    window.setSal = (id, k, v) => { personBoxes[id].salaryBox[k] = Number(v) || 0; renderStatsAndBoxes(); };
+    window.cancelSal = id => { personBoxes[id].salaryBox.active = false; renderStatsAndBoxes(); };
+    window.setCls = (id, k, v) => { personBoxes[id].classBox[k] = v; };
+    window.cancelCls = id => { personBoxes[id].classBox.active = false; renderStatsAndBoxes(); };
+    window.addCustom = id => { personBoxes[id].customBoxes.push({ id: 'c_' + Date.now(), title: 'Note', value: '' }); renderStatsAndBoxes(); };
+    window.editCustom = (id, cid, k, v) => { const b = personBoxes[id].customBoxes.find(x => x.id === cid); if (b) b[k] = v; };
+    window.delCustom = (id, cid) => { personBoxes[id].customBoxes = personBoxes[id].customBoxes.filter(x => x.id !== cid); renderStatsAndBoxes(); };
+
+    async function ensureModel() {
+      if (modelsLoaded) return;
+      if (!modelPromise) {
+        modelPromise = (async () => {
+          while (!window.faceapi) await new Promise(r => setTimeout(r, 40));
+          await faceapi.nets.tinyFaceDetector.loadFromUri(CFG.MODEL_URL);
+          modelsLoaded = true;
+        })();
+      }
+      await modelPromise;
+    }
+
+    async function startCam() {
+      try {
+        setStatus('Starting camera & fast detector...', 'busy');
+        await ensureModel();
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facing }, width: { ideal: 480 }, height: { ideal: 360 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+        overlay.width = video.videoWidth || 480;
+        overlay.height = video.videoHeight || 360;
+        $('empty').hidden = true;
+        running = true; submitted = false; lastSnap = null;
+        lockedPersons = []; customIdQueue = []; seenOrderedIds = [];
+        untargetedSet.clear(); personBoxes = {}; goneRecords = [];
+        sysGenCounter = 1; userLockedSingleId = null;
+        renderStatsAndBoxes(); renderGone();
+
+        $('enrollBtn').disabled = false;
+        $('submitBtn').disabled = false;
+        $('flipCam').disabled = false;
+        $('toggleCam').textContent = 'Stop Camera';
+        $('toggleCam').classList.replace('primary', 'stop');
+        setStatus('Fast live monitoring active', 'ok');
+        requestAnimationFrame(loop);
+      } catch (e) {
+        setStatus(`Camera failed: ${e?.name || 'Check permission'}`, 'error');
+      }
+    }
+
+    function stopCam() {
+      running = false;
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      video.srcObject = null;
+      $('empty').hidden = false;
+      $('enrollBtn').disabled = true; $('flipCam').disabled = true;
+      $('toggleCam').textContent = 'Start Camera';
+      $('toggleCam').classList.replace('stop', 'primary');
+      setStatus('Camera stopped', 'ok');
+    }
+
+    async function loop(now) {
+      if (!running) return;
+      if (!busy && now - lastDetect >= CFG.DETECT_MS && !document.hidden && video.readyState >= 2) {
+        busy = true;
+        lastDetect = now;
+        try {
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: CFG.INPUT_SIZE, scoreThreshold: CFG.SCORE });
+          const raw = await faceapi.detectAllFaces(video, opts);
+          const goneIds = updateFromBoxes(raw.map(d => d.box));
+          drawOverlay();
+
+          if (now - lastUi >= CFG.UI_MS) {
+            lastUi = now;
+            renderStatsAndBoxes();
+          }
+
+          const snap = makeSnap(lockedPersons);
+          if (!submitted && lastSnap && goneIds.length) {
+            goneRecords.push({ goneIds, before: lastSnap, after: snap });
+            renderGone();
+          }
+          lastSnap = snap;
+        } catch (e) { console.error(e); }
+        busy = false;
+      }
+      requestAnimationFrame(loop);
+    }
+
+    $('toggleCam').addEventListener('click', () => running ? stopCam() : startCam());
+    $('flipCam').addEventListener('click', async () => { facing = facing === 'environment' ? 'user' : 'environment'; stopCam(); await startCam(); });
+    $('applyIdsBtn').addEventListener('click', () => {
+      const val = $('idInput').value.trim();
+      if (!val) return;
+      setSingleId(val);
+      renderStatsAndBoxes(); drawOverlay();
+      setStatus(`ID locked to "${val}"`, 'ok');
+    });
+    $('enrollBtn').addEventListener('click', async () => {
+      const val = $('idInput').value.trim();
+      if (!val) { setStatus('Enter ID first', 'warn'); return; }
+      setSingleId(val);
+      renderStatsAndBoxes(); drawOverlay();
+      setStatus(`Locked ID "${val}"`, 'ok');
+    });
+    $('clearMarksBtn').addEventListener('click', () => { untargetedSet.clear(); renderStatsAndBoxes(); drawOverlay(); });
+
+    $('submitBtn').addEventListener('click', async () => {
+      submitted = true;
+      const seen = seenOrderedIds.length;
+      const unt = seenOrderedIds.filter(id => untargetedSet.has(id));
+      const tar = seenOrderedIds.filter(id => !untargetedSet.has(id));
+      try {
+        const res = await fetch(`${CFG.API_BASE}/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            submittedAt: new Date().toISOString(),
+            lockedIds: seenOrderedIds,
+            summary: {
+              totalIdsSeen: seen,
+              targetedPercentage: seen ? +((tar.length / seen) * 100).toFixed(1) : 100,
+              untargetedPercentage: seen ? +((unt.length / seen) * 100).toFixed(1) : 0,
+              targetedIdsOrdered: tar,
+              untargetedIdsOrdered: unt,
+              salaryTotals: salarySummary()
+            },
+            individualsDetails: personBoxes,
+            goneFromScreenEvents: goneRecords
+          })
+        });
+        if (!res.ok) throw new Error('Failed');
+        const saved = await res.json();
+        if (isAdmin) await refreshDb();
+        setStatus(`Saved to SQL Server (Row #${saved.id || 'OK'})`, 'ok');
+      } catch (e) {
+        setStatus('SQL Server save failed. Run node server.js & start SQL Server.', 'error');
+      }
+    });
+
+    function adminHeaders() {
+      return { 'Content-Type': 'application/json', 'x-admin-user': adminAuth.user, 'x-admin-pass': adminAuth.pass };
+    }
+
+    $('loginBtn').addEventListener('click', async () => {
+      const u = $('adminUser').value.trim(), p = $('adminPass').value;
+      try {
+        const res = await fetch(`${CFG.API_BASE}/auth/login`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
+        });
+        if (!res.ok) { setStatus('Invalid admin credentials', 'error'); return; }
+        adminAuth = { user: u, pass: p }; isAdmin = true;
+        $('authBadge').textContent = 'Admin Mode: Unlocked';
+        $('loginBox').hidden = true; $('adminPanel').hidden = false;
+        await refreshDb();
+      } catch (e) { setStatus('Backend unreachable on localhost:3000', 'error'); }
+    });
+
+    $('logoutBtn').addEventListener('click', () => {
+      isAdmin = false; adminAuth = { user: '', pass: '' };
+      $('authBadge').textContent = 'Admin Mode: Locked';
+      $('adminPanel').hidden = true; $('loginBox').hidden = false;
+    });
+
+    async function refreshDb() {
+      if (!isAdmin) return;
+      try {
+        const rows = await (await fetch(`${CFG.API_BASE}/sessions`, { headers: adminHeaders() })).json();
+        $('dbRecordsList').innerHTML = rows.map(r => `<div class="db-item"><strong>#${r.id}</strong> — Seen: ${r.total_ids_seen} | Targeted: ${r.targeted_percentage}% | Rem Salary: ${r.all_remaining_salary}</div>`).join('');
+      } catch (e) {}
+    }
+
+    $('viewDbBtn').addEventListener('click', refreshDb);
+    $('clearFacesBtn').addEventListener('click', async () => {
+      if (!isAdmin) return;
+      await fetch(`${CFG.API_BASE}/faces`, { method: 'DELETE', headers: adminHeaders() });
+      setStatus('Cleared saved faces in SQL Server', 'ok');
+    });
+
+    overlay.addEventListener('click', e => {
+      const r = overlay.getBoundingClientRect();
+      const px = (e.clientX - r.left) * (overlay.width / r.width);
+      const py = (e.clientY - r.top) * (overlay.height / r.height);
+      for (let i = lockedPersons.length - 1; i >= 0; i--) {
+        const [x, y, w, h] = lockedPersons[i].bbox;
+        if (px >= x && px <= x + w && py >= y && py <= y + h) { window.toggleTarget(lockedPersons[i].id); return; }
+      }
+    });
+  </script>
+</body>
+</html>
