@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Person Analytics &amp; SQL Server (Fast Test Build)</title>
+  <title>Person Analytics &amp; Cloud Database (Fast Test Build)</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <style>
     :root{
@@ -79,7 +79,7 @@
 <body>
   <main>
     <div class="top-bar">
-      <h1>Person Analytics &amp; SQL Server</h1>
+      <h1>Person Analytics &amp; Cloud Database</h1>
       <span id="authBadge" class="hint" style="margin:0;font-weight:700">Admin Mode: Locked</span>
     </div>
 
@@ -90,7 +90,7 @@
         <button id="toggleCam" class="primary">Start Camera</button>
         <button id="enrollBtn" disabled>Enroll &amp; Lock ID</button>
         <button id="flipCam" disabled>Flip Camera</button>
-        <button id="submitBtn" class="submit-btn" disabled>Submit to SQL Server</button>
+        <button id="submitBtn" class="submit-btn" disabled>Submit Session</button>
         <button id="clearMarksBtn" type="button">All Targeted</button>
       </div>
 
@@ -143,7 +143,7 @@
     </section>
 
     <section class="card">
-      <h2>Admin &amp; SQL Server</h2>
+      <h2>Admin &amp; Database</h2>
       <div id="loginBox">
         <div class="two-col" style="margin-top:0">
           <div><label for="adminUser">Username</label><input id="adminUser" type="text" placeholder="admin"></div>
@@ -530,6 +530,7 @@
       const unt = seenOrderedIds.filter(id => untargetedSet.has(id));
       const tar = seenOrderedIds.filter(id => !untargetedSet.has(id));
       try {
+        setStatus('Saving session...', 'busy');
         const res = await fetch(`${CFG.API_BASE}/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -551,9 +552,9 @@
         if (!res.ok) throw new Error('Failed');
         const saved = await res.json();
         if (isAdmin) await refreshDb();
-        setStatus(`Saved to SQL Server (Row #${saved.id || 'OK'})`, 'ok');
+        setStatus(`Saved to database (Row #${saved.id || 'OK'})`, 'ok');
       } catch (e) {
-        setStatus('SQL Server save failed. Run node server.js & start SQL Server.', 'error');
+        setStatus('Database save failed. Check Render backend & DATABASE_URL.', 'error');
       }
     });
 
@@ -564,6 +565,7 @@
     $('loginBtn').addEventListener('click', async () => {
       const u = $('adminUser').value.trim(), p = $('adminPass').value;
       try {
+        setStatus('Logging in...', 'busy');
         const res = await fetch(`${CFG.API_BASE}/auth/login`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p })
         });
@@ -572,28 +574,41 @@
         $('authBadge').textContent = 'Admin Mode: Unlocked';
         $('loginBox').hidden = true; $('adminPanel').hidden = false;
         await refreshDb();
-      } catch (e) { setStatus('Backend unreachable on localhost:3000', 'error'); }
+        setStatus('Admin logged in', 'ok');
+      } catch (e) { setStatus(`Backend unreachable at ${CFG.API_BASE}`, 'error'); }
     });
 
     $('logoutBtn').addEventListener('click', () => {
       isAdmin = false; adminAuth = { user: '', pass: '' };
       $('authBadge').textContent = 'Admin Mode: Locked';
       $('adminPanel').hidden = true; $('loginBox').hidden = false;
+      setStatus('Logged out', 'ok');
     });
 
     async function refreshDb() {
       if (!isAdmin) return;
       try {
-        const rows = await (await fetch(`${CFG.API_BASE}/sessions`, { headers: adminHeaders() })).json();
-        $('dbRecordsList').innerHTML = rows.map(r => `<div class="db-item"><strong>#${r.id}</strong> — Seen: ${r.total_ids_seen} | Targeted: ${r.targeted_percentage}% | Rem Salary: ${r.all_remaining_salary}</div>`).join('');
-      } catch (e) {}
+        const res = await fetch(`${CFG.API_BASE}/sessions`, { headers: adminHeaders() });
+        if (!res.ok) throw new Error('Failed to load records');
+        const rows = await res.json();
+        $('dbRecordsList').innerHTML = rows.length
+          ? rows.map(r => `<div class="db-item"><strong>#${r.id}</strong> — Seen: ${r.total_ids_seen} | Targeted: ${r.targeted_percentage}% | Rem Salary: ${r.all_remaining_salary}</div>`).join('')
+          : '<div class="hint">No records found yet.</div>';
+      } catch (e) {
+        setStatus('Could not refresh records from server', 'error');
+      }
     }
 
     $('viewDbBtn').addEventListener('click', refreshDb);
     $('clearFacesBtn').addEventListener('click', async () => {
       if (!isAdmin) return;
-      await fetch(`${CFG.API_BASE}/faces`, { method: 'DELETE', headers: adminHeaders() });
-      setStatus('Cleared saved faces in SQL Server', 'ok');
+      try {
+        const res = await fetch(`${CFG.API_BASE}/faces`, { method: 'DELETE', headers: adminHeaders() });
+        if (!res.ok) throw new Error('Failed to clear faces');
+        setStatus('Cleared saved faces in database', 'ok');
+      } catch (e) {
+        setStatus('Could not clear saved faces', 'error');
+      }
     });
 
     overlay.addEventListener('click', e => {
